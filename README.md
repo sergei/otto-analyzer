@@ -21,7 +21,11 @@ POLAR=data/sun_dragon_expedition_polars_v3.txt
 .venv/bin/python -m otto.dataset   out/raw out/race10hz.parquet   # 10 Hz race timeline
 .venv/bin/python -m otto.kpi       out/race10hz.parquet $POLAR out/kpi
 .venv/bin/python -m otto.switches  out/race10hz.parquet $POLAR out/kpi
+.venv/bin/python -m otto.waveband  out/race10hz.parquet out/kpi/windows.csv out/kpi   # needs kpi first
+.venv/bin/python -m otto.excursions out/race10hz.parquet $POLAR out/kpi
 ```
+
+`otto.waveband` takes `--twa-min`, `--tws-min` and `--tws-max` (default downwind: TWA > 135, 14-20 kt).
 
 Everything is written under `out/`, which is not committed.
 
@@ -31,6 +35,11 @@ Everything is written under `out/`, which is not committed.
 | `out/kpi/matched_*_vs_helm.csv` | Autopilot vs helm, matched by TWS x TWA x sea-state bin |
 | `out/kpi/switches.csv` | Paired comparison 5 min either side of each autopilot/helm switch |
 | `out/kpi/takeovers.csv` | Each autopilot -> helm switch and the boat's state in the 60 s before |
+| `out/kpi/helm_segments.csv` | Each helm stretch after autopilot steering, with its likely reason (gybe, stint, retarget, same-setting takeover) |
+| `out/kpi/waveband.csv` | Per window: 7-20 s wave-band swing of commanded/actual heading, TWA, AWA, yaw rate; coherences |
+| `out/kpi/ap_excursions.csv` | Autopilot excursions > 20 deg with UTC time, direction and whether a takeover followed |
+| `out/kpi/broach_rates.csv` | Broach-like events per 24 h by mode |
+| `out/kpi/bearaway_rudder.csv` | Mean bear-away rudder downwind by mode and TWS |
 
 ## Modules
 
@@ -42,7 +51,9 @@ Everything is written under `out/`, which is not committed.
 | `otto/dataset.py` | Merges sources onto a 10 Hz grid; infers autopilot mode; sets the race window |
 | `otto/polars.py` | Expedition polar lookup (target boat speed by TWS, TWA) |
 | `otto/kpi.py` | Window KPIs and condition-matched comparison |
-| `otto/switches.py` | Paired switch comparison and takeover analysis |
+| `otto/switches.py` | Paired switch comparison, takeover analysis, helm-segment classification |
+| `otto/waveband.py` | Wave-band snaking analysis: is the pilot following wind-angle noise? |
+| `otto/excursions.py` | Large excursions, broach-like event rates, rudder balance and zero offset |
 | `otto/pilotvars.py` | H5000 pilot variables (active Perf, gust/TWS bear-away, heel comp, ...) from PGN 130824 |
 
 ## YDVR-04 record format
@@ -69,8 +80,3 @@ Autopilot mode: 127237 steering mode 4 = engaged, 0 = standby (helm). When engag
 65341 byte 4 = 2 is heading hold (compass) and 3 is true-wind-angle mode, with the
 target TWA in bytes 6-7. These meanings, and the 130824 key assignments, are inferred
 from the data and the H5000 2018 release notes, not from B&G documentation of the PGNs.
-
-## Not yet scripted
-
-The wave-band spectral analysis, takeover classification and excursion list in the
-report were run ad hoc and are not in this repo yet.

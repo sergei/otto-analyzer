@@ -8,6 +8,9 @@ Usage: python -m otto.switches <race10hz.parquet> <polars.txt> <out_dir>
    next to the switch are skipped; spans with a tack/gybe or TWS change >= 2 kt are dropped.
 2. Takeovers: every autopilot -> helm switch, with what the boat was doing in the
    PRE seconds before it, compared to the same statistics at random autopilot times.
+3. Helm segments: every helm stretch after autopilot steering, classified as a gybe, a
+   long helming stint, a re-engage with a new mode/target, or a re-engage at the same
+   setting (the "didn't trust it" takeover).
 """
 import sys
 from pathlib import Path
@@ -111,6 +114,42 @@ def takeovers(df, seg, rng):
     return tk, pd.DataFrame(base)
 
 
+def classify_helm_segments(df, seg):
+    """Every helm segment that follows autopilot steering, with the reason it most likely happened.
+
+    The setting after re-engaging is read SETTLE..2*SETTLE after the helm segment ends, because
+    re-engaging always passes briefly through compass mode before wind mode.
+    """
+    rows = []
+    for k in range(1, len(seg) - 1):
+        prev, s, nxt = seg.iloc[k - 1], seg.iloc[k], seg.iloc[k + 1]
+        if s.kind != 'helm' or prev.kind != 'ap':
+            continue
+        mode_before = df['mode'].iloc[s.start - 1]
+        before = df.iloc[max(s.start - 5 * HZ, 0):s.start]
+        after = df.iloc[s.end + SETTLE:s.end + 2 * SETTLE] if nxt.kind == 'ap' else df.iloc[0:0]
+        after = after[after['mode'].isin(['wind', 'compass'])]
+        mode_after = after['mode'].mode().iloc[0] if len(after) else None
+        tb, ta = before.target_twa.dropna(), after.target_twa.dropna()
+        rows.append(dict(
+            t=df.t.iloc[s.start], helm_min=(s.end - s.start) / HZ / 60,
+            gybe=bool(df.maneuver.iloc[s.start:s.end].any()),
+            mode_before=mode_before, mode_after=mode_after,
+            target_before=tb.iloc[-1] if len(tb) and mode_before == 'wind' else np.nan,
+            target_after=ta.iloc[0] if len(ta) and mode_after == 'wind' else np.nan,
+            hts_before=df.hts.iloc[s.start - 1], hts_after=after.hts.iloc[0] if len(after) else np.nan))
+    h = pd.DataFrame(rows)
+    h['target_change'] = (h.target_after.abs() - h.target_before.abs()).abs()
+    h['hts_change'] = ((h.hts_after - h.hts_before + 180) % 360 - 180).abs()
+    retarget = ((h.mode_before != h.mode_after) & h.mode_after.notna()) \
+        | (h.mode_before.eq('wind') & h.mode_after.eq('wind') & (h.target_change > 3)) \
+        | (h.mode_before.eq('compass') & h.mode_after.eq('compass') & (h.hts_change > 5))
+    h['reason'] = np.select([h.gybe, h.helm_min >= 15, retarget],
+                            ['gybe', 'helming stint >= 15 min', 're-engaged with new mode or target'],
+                            're-engaged, same setting')
+    return h
+
+
 def main(data, polar_path, out_dir):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -143,6 +182,14 @@ def main(data, polar_path, out_dir):
     print(pd.DataFrame({'short takeovers': short[cols].median(), 'all takeovers': tk[cols].median(),
                         'random AP': base[cols].median(),
                         'random AP p90': base[cols].quantile(0.9)}).round(2).to_string())
+
+    h = classify_helm_segments(df, seg)
+    h.to_csv(out_dir / 'helm_segments.csv', index=False)
+    print(f'\nhelm segments after autopilot: {len(h)}')
+    print(h.groupby('reason').agg(n=('t', 'size'), median_min=('helm_min', 'median'),
+                                  total_h=('helm_min', lambda x: x.sum() / 60)).round(2).to_string())
+    same = (h.reason == 're-engaged, same setting').sum()
+    print(f'same-setting takeovers: {24 * same / ap_hours:.1f} per 24 h of autopilot time')
 
 
 if __name__ == '__main__':
