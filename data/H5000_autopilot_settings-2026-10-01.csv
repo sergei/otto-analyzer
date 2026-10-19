@@ -1,0 +1,28 @@
+Section,Setting,Value,Unit,Source,Photo,Notes
+Device,Device,H5000 Sail Pilot,,MFD,IMG_9519,
+Device,Manufacturer,B&G,,MFD,IMG_9519,
+Device,Software version,1100 120508,,MFD,IMG_9519,
+Device,NMEA 2000 address,15,,MFD,IMG_9519,
+Device,Serial number,006372#,,MFD,IMG_9519,
+Device,Instance,0,,MFD,IMG_9519,
+Device,Status,OK,,MFD,IMG_9519,
+Pilot controller,Model,B&G H5000,,Pilot controller,IMG_9523,
+Pilot controller,Serial number,009686,,Pilot controller,IMG_9523,
+Pilot controller,Software version,1.1.00.24,,Pilot controller,IMG_9523,
+Pilot controller,Software date,2020-07-07,,Pilot controller,IMG_9523,
+Sailing,Tack time,20,s,MFD,IMG_9539,
+Sailing,Tack angle,80,deg,MFD,IMG_9539,
+Sailing,Wind function / Wind mode,True,,MFD + Pilot controller,IMG_9539; IMG_9537,Options: Auto / Apparent / True
+Sailing,Gust Response,Disabled,,Pilot controller,IMG_9524,Not enabled (per owner)
+Sailing,TWS Response,Disabled,,Pilot controller,IMG_9525,Not enabled (per owner)
+Sailing,Heel Compensation,Disabled,,Pilot controller,IMG_9526,Not enabled (per owner)
+Steering,Auto response,Normal,,MFD + Pilot controller,IMG_9540; IMG_9527,Options: Off / Economy / Normal (list may scroll further)
+Steering,Recovery,Medium,,MFD + Pilot controller,IMG_9540; IMG_9528,Options: Off / Narrow / Medium (list may scroll further)
+Steering,Speed source,Manual,,Pilot controller,IMG_9538,
+Steering,Manual speed,0,kn,MFD,IMG_9540,Speed source is Manual but manual speed is 0 kn - worth checking
+Limits,TWA minimum,120,deg,MFD + Pilot controller,IMG_9542; IMG_9530,Adjustable range 110-165
+Limits,TWA maximum,160,deg,MFD + Pilot controller,IMG_9542; IMG_9531,Adjustable range 110-165
+Limits,Bear away max,5,deg,MFD + Pilot controller,IMG_9542; IMG_9532,Adjustable range 1-20
+Limits,Cruising speed,12,kn,MFD + Pilot controller,IMG_9542; IMG_9533,Adjustable range 2-50
+Limits,Rudder limit,25,deg,MFD,IMG_9542,
+Limits,Off course limit,10,deg,MFD,IMG_9542,

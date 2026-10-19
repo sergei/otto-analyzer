@@ -26,14 +26,35 @@ POLAR=data/sun_dragon_expedition_polars_v3.txt
 ```
 
 `otto.waveband` takes `--twa-min`, `--tws-min` and `--tws-max` (default downwind: TWA > 135, 14-20 kt).
+`otto.dataset` takes an optional UTC window (`'<start>' '<end>'`); it defaults to the race.
+
+## Scoring a settings test
+
+After an on-water test (alternating baseline and test blocks), list the blocks in a CSV
+(`start,end,label` in UTC, label `baseline` for the reference) and run:
+
+```sh
+T=out/tests/<id>
+.venv/bin/python -m otto.extract   <ydvr_folder> $T/raw
+.venv/bin/python -m otto.pilotvars <ydvr_folder> $T/pilotvars.parquet
+.venv/bin/python -m otto.dataset   $T/raw $T/data10hz.parquet '<start>' '<end>'
+.venv/bin/python -m otto.blocks    $T/data10hz.parquet $POLAR $T/blocks.csv $T --pilotvars $T/pilotvars.parquet
+```
+
+`otto.blocks` writes per-block KPIs, a per-label summary and a pass/fail table against the
+report's targets. In Claude Code, the project skill `/score-autopilot-test`
+(`.claude/skills/score-autopilot-test/SKILL.md`) walks through the same steps.
+
+Speed is judged by point of sail (project skill `sail-points`): close-hauled or running, `perf_eff` is
+VMG as a percentage of the polar's target VMG; reaching, it is boat speed as a percentage of polar speed.
 
 Everything is written under `out/`, which is not committed.
 
 | Output | Contents |
 | --- | --- |
-| `out/kpi/windows.csv` | KPIs per 10-minute window (single mode, no tack/gybe) with condition bins |
-| `out/kpi/matched_*_vs_helm.csv` | Autopilot vs helm, matched by TWS x TWA x sea-state bin |
-| `out/kpi/switches.csv` | Paired comparison 5 min either side of each autopilot/helm switch |
+| `out/kpi/windows.csv` | KPIs per 10-minute window (single mode, no tack/gybe) with point of sail, `perf_eff` and condition bins |
+| `out/kpi/matched_*_vs_helm.csv` | Autopilot vs helm, matched by TWS x point of sail x sea-state bin |
+| `out/kpi/switches.csv` | Paired comparison 5 min either side of each autopilot/helm switch (same point of sail) |
 | `out/kpi/takeovers.csv` | Each autopilot -> helm switch and the boat's state in the 60 s before |
 | `out/kpi/helm_segments.csv` | Each helm stretch after autopilot steering, with its likely reason (gybe, stint, retarget, same-setting takeover) |
 | `out/kpi/waveband.csv` | Per window: 7-20 s wave-band swing of commanded/actual heading, TWA, AWA, yaw rate; coherences |
@@ -49,11 +70,13 @@ Everything is written under `out/`, which is not committed.
 | `otto/extract.py` | Extracts selected PGNs to parquet, anchored to UTC via PGN 126992 |
 | `otto/decode.py` | Vectorised field decoders for the PGNs used |
 | `otto/dataset.py` | Merges sources onto a 10 Hz grid; infers autopilot mode; sets the race window |
-| `otto/polars.py` | Expedition polar lookup (target boat speed by TWS, TWA) |
+| `otto/polars.py` | Expedition polar lookup (target boat speed by TWS, TWA; optimal VMG angles) |
+| `otto/sailpoints.py` | Point of sail toward the finish and `perf_eff` (VMG close-hauled/running, speed reaching) |
 | `otto/kpi.py` | Window KPIs and condition-matched comparison |
 | `otto/switches.py` | Paired switch comparison, takeover analysis, helm-segment classification |
-| `otto/waveband.py` | Wave-band snaking analysis: is the pilot following wind-angle noise? |
+| `otto/waveband.py` | Wave-band oversteering analysis: is the pilot following wind-angle noise? |
 | `otto/excursions.py` | Large excursions, broach-like event rates, rudder balance and zero offset |
+| `otto/blocks.py` | Scores baseline vs. test blocks of a settings test against the report's targets |
 | `otto/pilotvars.py` | H5000 pilot variables (active Perf, gust/TWS bear-away, heel comp, ...) from PGN 130824 |
 
 ## YDVR-04 record format

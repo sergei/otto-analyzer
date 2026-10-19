@@ -5,7 +5,8 @@ Usage: python -m otto.switches <race10hz.parquet> <polars.txt> <out_dir>
 1. Paired comparison: the last SPAN of an autopilot segment vs. the first SPAN of the
    adjacent helm segment (and vice versa). Wind, sea and sail plan are nearly identical
    across a switch, so the difference isolates who (or what) is steering. SETTLE seconds
-   next to the switch are skipped; spans with a tack/gybe or TWS change >= 2 kt are dropped.
+   next to the switch are skipped; spans with a tack/gybe, a TWS change >= 2 kt, or a different
+   point of sail (otto.sailpoints) on the two sides are dropped. Speed is judged by perf_eff.
 2. Takeovers: every autopilot -> helm switch, with what the boat was doing in the
    PRE seconds before it, compared to the same statistics at random autopilot times.
 3. Helm segments: every helm stretch after autopilot steering, classified as a gybe, a
@@ -42,7 +43,11 @@ def segments(mode):
 
 
 def side_stats(g):
+    points = g.sail_point.value_counts()
     return dict(
+        sail_point=points.index[0] if len(points) else None,
+        sail_point_frac=points.iloc[0] / len(g) if len(points) else 0.0,
+        perf_eff=g.perf_eff.mean(),
         polar_eff=100 * np.nanmean(g.stw / g.polar_bsp),
         stw=g.stw.mean(), tws=g.tws.mean(), twa_abs=g.twa_abs.mean(),
         twa_dev_rms=np.sqrt(np.nanmean(g.twa_dev ** 2)), rot_rms=np.sqrt(np.nanmean(g.rot ** 2)),
@@ -78,14 +83,18 @@ def paired(df, seg):
         sb, sa = side_stats(before), side_stats(after)
         if abs(sb['tws'] - sa['tws']) >= 2:
             continue
+        # Same point of sail on both sides, otherwise speed and VMG are not comparable.
+        if sb['sail_point'] != sa['sail_point'] or min(sb['sail_point_frac'], sa['sail_point_frac']) < 0.8:
+            continue
         ap_seg = s1 if s1.kind == 'ap' else s2
         ap_side, helm_side = (sb, sa) if s1.kind == 'ap' else (sa, sb)
         rows.append(dict(t=df.t.iloc[i], switch=f'{s1.kind}->{s2.kind}', ap_mode=ap_seg.ap_mode,
+                         sail_point=sb['sail_point'],
                          tws=(sb['tws'] + sa['tws']) / 2, twa_abs=(sb['twa_abs'] + sa['twa_abs']) / 2,
-                         **{f'{c}_ap': v for c, v in ap_side.items()},
-                         **{f'{c}_helm': v for c, v in helm_side.items()}))
+                         **{f'{c}_ap': v for c, v in ap_side.items() if not c.startswith('sail_point')},
+                         **{f'{c}_helm': v for c, v in helm_side.items() if not c.startswith('sail_point')}))
     s = pd.DataFrame(rows)
-    for c in ('polar_eff', 'stw', 'twa_dev_rms', 'rot_rms', 'roll_p99', 'rud_rate_rms'):
+    for c in ('perf_eff', 'polar_eff', 'stw', 'twa_dev_rms', 'rot_rms', 'roll_p99', 'rud_rate_rms'):
         s[f'{c}_diff'] = s[f'{c}_ap'] - s[f'{c}_helm']
     return s
 
@@ -161,14 +170,14 @@ def main(data, polar_path, out_dir):
     print('usable paired switches:', len(s))
     print(s.groupby(['ap_mode', 'switch']).size())
     diff_cols = [c for c in s.columns if c.endswith('_diff')]
+    print(s.groupby(['ap_mode', 'sail_point']).size())
     for m, g in s.groupby('ap_mode'):
-        d = g.polar_eff_diff
-        se = d.std(ddof=1) / np.sqrt(len(d))
-        print(f'\n{m}: n={len(g)}  polar_eff AP-helm mean {d.mean():.2f} pts (95% CI +-{1.96 * se:.2f}), '
-              f'median {d.median():.2f}, AP slower in {100 * (d < 0).mean():.0f}% of switches')
+        d = g.perf_eff_diff
+        se = d.std(ddof=1) / np.sqrt(len(d)) if len(d) > 1 else np.nan
+        print(f'\n{m}: n={len(g)}  perf_eff AP-helm mean {d.mean():.2f} pts (95% CI +-{1.96 * se:.2f}), '
+              f'median {d.median():.2f}, AP worse in {100 * (d < 0).mean():.0f}% of switches')
         print(g[diff_cols].describe().T[['mean', '50%', 'std']].round(2).to_string())
-        print(g.groupby(pd.cut(g.tws, [0, 14, 18, 22, 40]), observed=True).polar_eff_diff
-              .agg(['size', 'mean', 'median']).round(2).to_string())
+        print(g.groupby('sail_point').perf_eff_diff.agg(['size', 'mean', 'median', 'std']).round(2).to_string())
 
     tk, base = takeovers(df, seg, np.random.default_rng(0))
     tk.to_csv(out_dir / 'takeovers.csv', index=False)

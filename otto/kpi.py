@@ -3,7 +3,7 @@
 Usage: python -m otto.kpi <race10hz.parquet> <polars.txt> <out_dir>
 
 Windows are 10 minutes. A window is kept only if >= 98 % of it is in one mode
-(wind / compass / helm) and contains no tack or gybe.
+(wind / compass / helm), >= 80 % of it on one point of sail, and it contains no tack or gybe.
 
 KPIs computed identically for every mode ("comparable"):
   twa_dev_rms   RMS of |TWA| about its 2-minute centred median (deg)
@@ -16,7 +16,9 @@ KPIs computed identically for every mode ("comparable"):
   rud_rev_pm    rudder reversals per minute (direction changes after >= 1 deg of travel)
   rud_abs_mean  mean |rudder| (deg)
   rud_sat_pct   % of time |rudder| >= 20 deg
-  polar_eff     mean STW / polar target (%)
+  polar_eff     mean STW / polar boat speed at the actual TWA (%)
+  perf_eff      performance for the point of sail (otto.sailpoints): VMG / target VMG when
+                close-hauled or running, STW / polar speed when reaching (%)
 Autopilot only:
   twa_err_*     TWA error vs. autopilot target TWA (wind mode)
   hdg_err_*     heading error vs. heading-to-steer (both autopilot modes)
@@ -30,6 +32,7 @@ import numpy as np
 import pandas as pd
 
 from otto.polars import Polar
+from otto.sailpoints import add_sail_points
 
 HZ = 10
 WINDOW = '10min'
@@ -109,7 +112,7 @@ def prepare(df, polar):
     # Maneuver = sign change of 10 s smoothed TWA.
     side = np.sign(df.twa.rolling(10 * HZ, center=True, min_periods=1).mean())
     df['maneuver'] = side.ne(side.shift()) & side.shift().notna()
-    return df
+    return add_sail_points(df, polar)
 
 
 def window_kpis(g):
@@ -118,6 +121,9 @@ def window_kpis(g):
     r['mode'] = counts.index[0]
     r['mode_frac'] = counts.iloc[0] / len(g)
     r['maneuver'] = bool(g.maneuver.any())
+    points = g.sail_point.value_counts()
+    r['sail_point'] = points.index[0] if len(points) else None
+    r['sail_point_frac'] = points.iloc[0] / len(g) if len(points) else 0.0
     hours = len(g) / HZ / 3600
     r.update(
         tws=g.tws.mean(), twa_abs=g.twa_abs.mean(), stw=g.stw.mean(),
@@ -134,6 +140,7 @@ def window_kpis(g):
         rud_abs_mean=g.rudder.abs().mean(),
         rud_sat_pct=100 * (g.rudder.abs() >= 20).mean(),
         polar_eff=100 * (g.stw / g.polar_bsp).replace([np.inf, -np.inf], np.nan).mean(),
+        perf_eff=g.perf_eff.mean(), mark_twa=g.mark_twa.mean(),
     )
     if r['mode'] in ('wind', 'compass'):
         e = g.hdg_err
@@ -153,10 +160,14 @@ def window_kpis(g):
 
 TWS_BINS = [0, 12, 15, 18, 21, 40]
 TWA_BINS = [0, 70, 110, 135, 155, 181]
-COMPARABLE = ['polar_eff', 'twa_dev_rms', 'hdg_dev_rms', 'exc15_ph', 'exc25_ph', 'rot_rms', 'roll_p99',
+COMPARABLE = ['perf_eff', 'polar_eff', 'twa_dev_rms', 'hdg_dev_rms', 'exc15_ph', 'exc25_ph', 'rot_rms', 'roll_p99',
               'rud_rate_rms', 'rud_rev_pm', 'rud_abs_mean', 'rud_sat_pct']
 # Rare-event KPIs are aggregated with the mean; the median of a mostly-zero rate is uninformative.
 EVENT_KPIS = ['exc15_ph', 'exc25_ph', 'rud_sat_pct']
+HIGHER_IS_BETTER = {'perf_eff', 'polar_eff'}
+# Windows are matched on wind speed, point of sail (by destination) and sea state. Not on the
+# boat's own TWA: on a run, the angle steered is part of the VMG performance being compared.
+MATCH_KEYS = ['tws_bin', 'sail_point', 'sea_bin']
 
 
 def add_bins(w):
@@ -169,7 +180,7 @@ def add_bins(w):
 
 def matched_comparison(w, ap_mode, min_n=3):
     """Condition-matched difference ap_mode - helm, weighted by the autopilot's time in each bin."""
-    keys = ['tws_bin', 'twa_bin', 'sea_bin']
+    keys = MATCH_KEYS
     grouped = w.groupby(keys + ['mode'], observed=True)
     med = grouped[COMPARABLE].median()
     med[EVENT_KPIS] = grouped[EVENT_KPIS].mean()
@@ -192,7 +203,7 @@ def matched_comparison(w, ap_mode, min_n=3):
         'helm': np.average(helm, axis=0, weights=weights),
     }, index=COMPARABLE)
     out['diff'] = out[ap_mode] - out['helm']
-    out['ap_worse_bins_pct'] = [100 * np.average((ap[c].values > helm[c].values) if c != 'polar_eff'
+    out['ap_worse_bins_pct'] = [100 * np.average((ap[c].values > helm[c].values) if c not in HIGHER_IS_BETTER
                                                  else (ap[c].values < helm[c].values), weights=weights)
                                 for c in COMPARABLE]
     out.attrs['bins'] = len(rows)
@@ -208,7 +219,8 @@ def main(data, polar_path, out_dir):
     rows = [window_kpis(g) for _, g in df.groupby(df.t.dt.floor(WINDOW)) if len(g) > 0.9 * 600 * HZ]
     w = pd.DataFrame(rows)
     w.to_csv(out_dir / 'windows_all.csv', index=False)
-    clean = w[(w.mode_frac >= 0.98) & ~w.maneuver & w['mode'].isin(['wind', 'compass', 'helm'])]
+    clean = w[(w.mode_frac >= 0.98) & ~w.maneuver & w['mode'].isin(['wind', 'compass', 'helm'])
+              & (w.sail_point_frac >= 0.8)]
     clean = add_bins(clean)
     clean.to_csv(out_dir / 'windows.csv', index=False)
     print('windows total', len(w), 'clean', len(clean))
@@ -216,6 +228,8 @@ def main(data, polar_path, out_dir):
     summary = clean.groupby('mode')[['tws', 'twa_abs', 'pitch_std'] + COMPARABLE].median()
     summary[EVENT_KPIS] = clean.groupby('mode')[EVENT_KPIS].mean()
     print(summary.T.round(2).to_string())
+    print('\nperf_eff by point of sail (median of windows, n):')
+    print(clean.groupby(['sail_point', 'mode']).perf_eff.agg(['median', 'size']).unstack('mode').round(1).to_string())
     ap_cols = ['target_twa', 'twa_err_mean', 'twa_err_rms', 'twa_err_p95', 'twa_err_in5_pct',
                'hdg_err_mean', 'hdg_err_rms', 'hdg_err_p95', 'drive_lag_s', 'drive_err_rms']
     ap_events = ['exc15_target_ph', 'exc25_target_ph', 'off_hdg_pct']

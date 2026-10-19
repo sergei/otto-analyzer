@@ -1,6 +1,9 @@
-"""Build a 10 Hz race timeline from the extracted PGN tables.
+"""Build a 10 Hz timeline from the extracted PGN tables.
 
-Usage: python -m otto.dataset <raw_dir> <out.parquet>
+Usage: python -m otto.dataset <raw_dir> <out.parquet> [<start_utc> <end_utc>]
+
+The window defaults to the PacCup 2026 race; pass start/end (e.g. '2026-11-02 18:00')
+for other recordings such as settings tests.
 
 Sources (identified from address claims and content):
   15  B&G autopilot computer: 127237 steering mode / heading-to-steer, 127245 rudder order,
@@ -28,13 +31,13 @@ def wrap180(a):
 
 
 def attach(grid, df, cols, tol=TOL):
-    df = df[(df.t >= RACE_START - tol) & (df.t <= RACE_END + tol)].sort_values('t')
+    df = df[(df.t >= grid.t.iloc[0] - tol) & (df.t <= grid.t.iloc[-1] + tol)].sort_values('t')
     df = df.assign(t=df.t.astype('datetime64[ns]'))
     return pd.merge_asof(grid, df[['t'] + cols], on='t', direction='nearest', tolerance=tol)
 
 
-def build(raw):
-    grid = pd.DataFrame({'t': pd.date_range(RACE_START, RACE_END, freq='100ms').astype('datetime64[ns]')})
+def build(raw, start=RACE_START, end=RACE_END):
+    grid = pd.DataFrame({'t': pd.date_range(start, end, freq='100ms').astype('datetime64[ns]')})
 
     htc = D.heading_track_control(raw)
     ap = D.simnet_ap_mode(raw)
@@ -79,7 +82,8 @@ def build(raw):
 
 
 if __name__ == '__main__':
-    df = build(sys.argv[1])
+    window = [pd.Timestamp(a) for a in sys.argv[3:5]]
+    df = build(sys.argv[1], *window)
     df.to_parquet(sys.argv[2], index=False)
     print(df.describe().T.to_string())
     print(df['mode'].value_counts() / 36000)  # hours

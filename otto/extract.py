@@ -64,7 +64,7 @@ def process(path):
 
 
 def main(root, out_dir):
-    files = sorted(Path(root).glob('YDVR*/*.DAT'))
+    files = sorted(Path(root).glob('YDVR*/*.DAT')) or sorted(Path(root).glob('*.DAT'))
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     parts = {p: [] for p in PGNS}

@@ -79,7 +79,7 @@ def process(path):
 
 
 def main(root, out):
-    files = sorted(Path(root).glob('YDVR*/*.DAT'))
+    files = sorted(Path(root).glob('YDVR*/*.DAT')) or sorted(Path(root).glob('*.DAT'))
     rows = []
     with Pool() as pool:
         for r in pool.imap_unordered(process, files, chunksize=4):

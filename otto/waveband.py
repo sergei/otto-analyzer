@@ -1,4 +1,4 @@
-"""Wave-band steering analysis: does the pilot make the boat snake?
+"""Wave-band steering analysis: does the pilot oversteer?
 
 Usage: python -m otto.waveband <race10hz.parquet> <windows.csv> <out_dir>
            [--twa-min 135] [--tws-min 14] [--tws-max 20]
