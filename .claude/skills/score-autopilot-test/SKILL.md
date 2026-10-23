@@ -16,7 +16,8 @@ Ask for anything not already given:
 - **Block times**, start/end in **UTC**, each labelled `baseline` or a short test name (e.g. `damping6`).
   If the user gives local times, convert to UTC and say which offset you used.
 - **Which setting changed** in the test blocks, and its baseline value (for the write-up only).
-  The race baseline (from controller photos) is in `data/H5000_autopilot_settings-2026-10-01.csv`;
+  The race baseline (controller photos plus the boat's settings sheet, raw export in
+  `data/H5000_settings_sheet.csv`) is in `data/H5000_autopilot_settings-2026-10-01.csv`;
   if the user has a newer settings file, use that.
 
 Pick a short test id from the date and setting, e.g. `2026-11-02-damping`, and use
