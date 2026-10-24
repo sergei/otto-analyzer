@@ -23,6 +23,7 @@ POLAR=data/sun_dragon_expedition_polars_v3.txt
 .venv/bin/python -m otto.switches  out/race10hz.parquet $POLAR out/kpi
 .venv/bin/python -m otto.waveband  out/race10hz.parquet out/kpi/windows.csv out/kpi   # needs kpi first
 .venv/bin/python -m otto.excursions out/race10hz.parquet $POLAR out/kpi
+.venv/bin/python -m otto.leeway     out/race10hz.parquet out/kpi
 ```
 
 `otto.waveband` takes `--twa-min`, `--tws-min` and `--tws-max` (default downwind: TWA > 135, 14-20 kt).
@@ -61,6 +62,7 @@ Everything is written under `out/`, which is not committed.
 | `out/kpi/ap_excursions.csv` | Autopilot excursions > 20 deg with UTC time, direction and whether a takeover followed |
 | `out/kpi/broach_rates.csv` | Broach-like events per 24 h by mode |
 | `out/kpi/bearaway_rudder.csv` | Mean bear-away rudder downwind by mode and TWS |
+| `out/kpi/leeway.csv` | Bus TWA minus TWA recomputed with no leeway, by point of sail, and its correlation with heel / BSP² |
 
 ## Modules
 
@@ -76,6 +78,7 @@ Everything is written under `out/`, which is not committed.
 | `otto/switches.py` | Paired switch comparison, takeover analysis, helm-segment classification |
 | `otto/waveband.py` | Wave-band oversteering analysis: is the pilot following wind-angle noise? |
 | `otto/excursions.py` | Large excursions, broach-like event rates, rudder balance and zero offset |
+| `otto/leeway.py` | Checks whether the bus TWA includes a leeway correction |
 | `otto/blocks.py` | Scores baseline vs. test blocks of a settings test against the report's targets |
 | `otto/pilotvars.py` | H5000 pilot variables (active Perf, gust/TWS bear-away, heel comp, ...) from PGN 130824 |
 
